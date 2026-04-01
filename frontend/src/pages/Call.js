@@ -39,6 +39,8 @@ export default function Call() {
   const [participants, setParticipants] = useState([]);
   const [messages, setMessages] = useState([]);
   const [speakingId, setSpeakingId] = useState(null);
+  const [localPreviewStream, setLocalPreviewStream] = useState(null);
+  const [remoteStreamsByUserId, setRemoteStreamsByUserId] = useState({});
 
   const socketRef = useRef(null);
   const captionIntervalRef = useRef(null);
@@ -46,10 +48,29 @@ export default function Call() {
   const userIdRef = useRef(uuidv4());
   const displayName = userName || 'Guest';
 
+  const localStreamRef = useRef(null); // camera+mic
+  const screenStreamRef = useRef(null);
+  const peerConnectionsRef = useRef(new Map()); // socketId -> RTCPeerConnection
+  const pendingOfferTargetsRef = useRef([]); // participants to call once local media is ready
+  const participantsRef = useRef([]);
+
   const showToast = useCallback((msg, icon = '✅') => {
     setToast({ msg, icon });
     setTimeout(() => setToast(null), 3000);
   }, []);
+
+  useEffect(() => {
+    participantsRef.current = participants;
+  }, [participants]);
+
+  const rtcConfigRef = useRef({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ],
+  });
+
+  const inviteLink = `${window.location.origin}/call/${roomId}`;
 
   // Timer
   useEffect(() => {
@@ -57,13 +78,148 @@ export default function Call() {
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    if (!window.isSecureContext && window.location.hostname !== 'localhost') {
+      showToast('For mic/cam on other laptops, use HTTPS (or localhost)', '🔒');
+    }
+  }, [showToast]);
+
+  const stopStream = (stream) => {
+    if (!stream) return;
+    stream.getTracks().forEach((t) => {
+      try {
+        t.stop();
+      } catch (_) {
+        // ignore
+      }
+    });
+  };
+
+  const closeAllPeerConnections = useCallback(() => {
+    for (const pc of peerConnectionsRef.current.values()) {
+      try {
+        pc.ontrack = null;
+        pc.onicecandidate = null;
+        pc.onconnectionstatechange = null;
+        pc.close();
+      } catch (_) {
+        // ignore
+      }
+    }
+    peerConnectionsRef.current.clear();
+  }, []);
+
+  const ensurePeerConnection = useCallback(
+    ({ toSocketId, toUserId }) => {
+      const existing = peerConnectionsRef.current.get(toSocketId);
+      if (existing) return existing;
+
+      const pc = new RTCPeerConnection(rtcConfigRef.current);
+      peerConnectionsRef.current.set(toSocketId, pc);
+
+      const localStream = localStreamRef.current;
+      if (localStream) {
+        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+      }
+
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) return;
+        socketRef.current?.emit('webrtc-ice-candidate', {
+          roomId,
+          toSocketId,
+          fromUserId: userIdRef.current,
+          candidate: e.candidate,
+        });
+      };
+
+      pc.ontrack = (e) => {
+        const [remoteStream] = e.streams;
+        if (!remoteStream) return;
+        setRemoteStreamsByUserId((prev) => ({ ...prev, [toUserId]: remoteStream }));
+      };
+
+      pc.onconnectionstatechange = () => {
+        const st = pc.connectionState;
+        if (st === 'failed' || st === 'closed' || st === 'disconnected') {
+          // best-effort cleanup; UI also updates via user-left
+        }
+      };
+
+      return pc;
+    },
+    [roomId]
+  );
+
+  const callParticipant = useCallback(
+    async (p) => {
+      if (!p?.socketId || !p?.userId) return;
+      const localStream = localStreamRef.current;
+      if (!localStream) {
+        pendingOfferTargetsRef.current = [...pendingOfferTargetsRef.current, p];
+        return;
+      }
+
+      const pc = ensurePeerConnection({ toSocketId: p.socketId, toUserId: p.userId });
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socketRef.current?.emit('webrtc-offer', {
+        roomId,
+        toSocketId: p.socketId,
+        fromUserId: userIdRef.current,
+        sdp: pc.localDescription,
+      });
+    },
+    [ensurePeerConnection, roomId]
+  );
+
+  // Media: mic + camera
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        if (cancelled) {
+          stopStream(stream);
+          return;
+        }
+
+        localStreamRef.current = stream;
+        setLocalPreviewStream(stream);
+
+        const hasAudio = stream.getAudioTracks().some((t) => t.enabled);
+        const hasVideo = stream.getVideoTracks().some((t) => t.enabled);
+        setMicOn(hasAudio);
+        setCamOn(hasVideo);
+
+        // Flush any pending calls queued before we had local media
+        const pending = pendingOfferTargetsRef.current;
+        pendingOfferTargetsRef.current = [];
+        pending.forEach((p) => callParticipant(p));
+      } catch (e) {
+        console.error(e);
+        showToast('Allow mic + camera permissions to join', '⚠️');
+        setMicOn(false);
+        setCamOn(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [callParticipant, showToast]);
+
   // Socket
   useEffect(() => {
     const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
     const socket = io(BACKEND);
     socketRef.current = socket;
+    const myUserId = userIdRef.current;
+    const myName = displayName;
 
-    socket.emit('join-room', { roomId, userName: displayName, userId: userIdRef.current });
+    socket.emit('join-room', { roomId, userName: myName, userId: myUserId });
 
     socket.on('room-state', ({ participants: existing }) => {
       setParticipants(existing.map((p) => ({ ...p, isRemote: true })));
@@ -73,10 +229,29 @@ export default function Call() {
         if (prev.find((p) => p.userId === participant.userId)) return prev;
         return [...prev, { ...participant, isRemote: true }];
       });
+      // Existing participants initiate WebRTC toward the new joiner.
+      callParticipant(participant);
       showToast(`${participant.userName} joined`, '👤');
     });
     socket.on('user-left', ({ userId, userName: n }) => {
       setParticipants((prev) => prev.filter((p) => p.userId !== userId));
+      setRemoteStreamsByUserId((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      const mappedSocketId = participantsRef.current.find((p) => p.userId === userId)?.socketId;
+      if (mappedSocketId) {
+        const pc = peerConnectionsRef.current.get(mappedSocketId);
+        if (pc) {
+          try {
+            pc.close();
+          } catch (_) {
+            // ignore
+          }
+        }
+        peerConnectionsRef.current.delete(mappedSocketId);
+      }
       showToast(`${n} left`, '👋');
     });
     socket.on('chat-message', (msg) => setMessages((prev) => [...prev, msg]));
@@ -94,11 +269,60 @@ export default function Call() {
       );
     });
 
+    // WebRTC signaling handlers
+    socket.on('webrtc-offer', async ({ fromSocketId, fromUserId, sdp }) => {
+      try {
+        const pc = ensurePeerConnection({ toSocketId: fromSocketId, toUserId: fromUserId });
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('webrtc-answer', {
+          roomId,
+          toSocketId: fromSocketId,
+          fromUserId: userIdRef.current,
+          sdp: pc.localDescription,
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
+    socket.on('webrtc-answer', async ({ fromSocketId, sdp }) => {
+      try {
+        const pc = peerConnectionsRef.current.get(fromSocketId);
+        if (!pc) return;
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
+    socket.on('webrtc-ice-candidate', async ({ fromSocketId, candidate }) => {
+      try {
+        const pc = peerConnectionsRef.current.get(fromSocketId);
+        if (!pc) return;
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
     return () => {
-      socket.emit('leave-room', { roomId, userId: userIdRef.current, userName: displayName });
+      socket.emit('leave-room', { roomId, userId: myUserId, userName: myName });
       socket.disconnect();
     };
-  }, [roomId, displayName, showToast]);
+  }, [roomId, displayName, showToast, callParticipant, ensurePeerConnection]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      closeAllPeerConnections();
+      stopStream(screenStreamRef.current);
+      screenStreamRef.current = null;
+      stopStream(localStreamRef.current);
+      localStreamRef.current = null;
+    };
+  }, [closeAllPeerConnections]);
 
   // Simulated speaking indicator
   useEffect(() => {
@@ -132,6 +356,8 @@ export default function Call() {
   const toggleMic = () => {
     const next = !micOn;
     setMicOn(next);
+    const stream = localStreamRef.current;
+    if (stream) stream.getAudioTracks().forEach((t) => (t.enabled = next));
     socketRef.current?.emit('toggle-mic', { roomId, userId: userIdRef.current, muted: !next });
     showToast(next ? 'Mic on' : 'Mic off', next ? '🎤' : '🔇');
   };
@@ -139,14 +365,70 @@ export default function Call() {
   const toggleCam = () => {
     const next = !camOn;
     setCamOn(next);
+    const stream = localStreamRef.current;
+    if (stream) stream.getVideoTracks().forEach((t) => (t.enabled = next));
     socketRef.current?.emit('toggle-cam', { roomId, userId: userIdRef.current, camOff: !next });
     showToast(next ? 'Camera on' : 'Camera off', next ? '📹' : '📷');
   };
 
-  const toggleShare = () => {
-    const next = !sharing;
-    setSharing(next);
-    showToast(next ? 'Screen sharing started' : 'Screen sharing stopped', next ? '🖥️' : '✅');
+  const toggleShare = async () => {
+    if (sharing) {
+      // Stop share and revert to camera
+      setSharing(false);
+      stopStream(screenStreamRef.current);
+      screenStreamRef.current = null;
+
+      const camTrack = localStreamRef.current?.getVideoTracks?.()[0];
+      if (camTrack) {
+        for (const pc of peerConnectionsRef.current.values()) {
+          const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+          if (sender) {
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              await sender.replaceTrack(camTrack);
+            } catch (_) {
+              // ignore
+            }
+          }
+        }
+      }
+      setLocalPreviewStream(localStreamRef.current);
+      showToast('Screen sharing stopped', '✅');
+      return;
+    }
+
+    try {
+      const screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const screenTrack = screen.getVideoTracks()[0];
+      if (!screenTrack) return;
+
+      screenStreamRef.current = screen;
+      setSharing(true);
+
+      // Replace outgoing video track for all peers
+      for (const pc of peerConnectionsRef.current.values()) {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+        if (sender) {
+          // eslint-disable-next-line no-await-in-loop
+          await sender.replaceTrack(screenTrack);
+        }
+      }
+
+      // Local preview: keep mic from camera stream + screen video track
+      const audioTrack = localStreamRef.current?.getAudioTracks?.()[0] || null;
+      const preview = new MediaStream([screenTrack, ...(audioTrack ? [audioTrack] : [])]);
+      setLocalPreviewStream(preview);
+
+      screenTrack.onended = () => {
+        // user stopped share from browser UI
+        toggleShare();
+      };
+
+      showToast('Screen sharing started', '🖥️');
+    } catch (e) {
+      console.error(e);
+      showToast('Screen share blocked/cancelled', '⚠️');
+    }
   };
 
   const toggleRecord = () => {
@@ -176,7 +458,21 @@ export default function Call() {
   const leaveCall = () => {
     socketRef.current?.emit('leave-room', { roomId, userId: userIdRef.current, userName: displayName });
     socketRef.current?.disconnect();
+    closeAllPeerConnections();
+    stopStream(screenStreamRef.current);
+    screenStreamRef.current = null;
+    stopStream(localStreamRef.current);
+    localStreamRef.current = null;
     navigate('/');
+  };
+
+  const copyInviteLink = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      showToast('Invite link copied', '🔗');
+    } catch (_) {
+      showToast('Copy failed — copy from address bar', '⚠️');
+    }
   };
 
   const openSidebar = (tab) => {
@@ -185,8 +481,21 @@ export default function Call() {
   };
 
   const allTiles = [
-    { id: userIdRef.current, name: displayName, isYou: true, muted: !micOn, camOff: !camOn },
-    ...participants,
+    {
+      id: userIdRef.current,
+      userId: userIdRef.current,
+      name: displayName,
+      isYou: true,
+      muted: !micOn,
+      camOff: !camOn,
+      stream: localPreviewStream,
+    },
+    ...participants.map((p) => ({
+      ...p,
+      id: p.userId,
+      name: p.userName,
+      stream: remoteStreamsByUserId[p.userId] || null,
+    })),
   ];
 
   const gridClass =
@@ -206,6 +515,7 @@ export default function Call() {
           {recording && <div className={styles.recBadge}>⏺ REC</div>}
         </div>
         <div className={styles.headerRight}>
+          <button className={styles.inviteBtn} onClick={copyInviteLink} title={inviteLink}>Invite</button>
           <span className={styles.timer}>{fmt(seconds)}</span>
           <button className={styles.leaveBtn} onClick={leaveCall}>Leave</button>
         </div>
@@ -279,9 +589,15 @@ const TILE_COLORS = [
 
 function VideoTile({ tile, speaking }) {
   const idx = (tile.name || 'A').charCodeAt(0) % TILE_COLORS.length;
+  const showVideo = Boolean(tile.stream) && !tile.camOff;
   return (
-    <div className={`${styles.tile} ${speaking ? styles.tileSpeaking : ''} ${tile.isYou ? styles.tileYou : ''}`}>
+    <div
+      className={`${styles.tile} ${speaking ? styles.tileSpeaking : ''} ${tile.isYou ? styles.tileYou : ''} ${
+        showVideo ? styles.tileHasVideo : ''
+      }`}
+    >
       {tile.isYou && <div className={styles.youTag}>You</div>}
+      {showVideo ? <VideoEl stream={tile.stream} muted={tile.isYou} /> : null}
       <div className={styles.tileBg}>
         <div className={styles.tileMesh} />
         <div className={styles.tileAvatar} style={{ background: TILE_COLORS[idx] }}>
@@ -298,6 +614,15 @@ function VideoTile({ tile, speaking }) {
       </div>
     </div>
   );
+}
+
+function VideoEl({ stream, muted }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.srcObject = stream;
+  }, [stream]);
+  return <video className={styles.video} ref={ref} autoPlay playsInline muted={muted} />;
 }
 
 /* ── Control Button ── */

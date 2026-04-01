@@ -23,6 +23,38 @@ function socketHandler(io) {
       console.log(`👤 ${userName} joined room ${roomId}`);
     });
 
+    // ---- WebRTC signaling relay (mesh) ----
+    // Client sends messages targeted at a specific peer (by socketId).
+    socket.on("webrtc-offer", ({ roomId, toSocketId, fromUserId, sdp }) => {
+      if (!roomId || !toSocketId || !sdp) return;
+      socket.to(toSocketId).emit("webrtc-offer", {
+        roomId,
+        fromSocketId: socket.id,
+        fromUserId,
+        sdp,
+      });
+    });
+
+    socket.on("webrtc-answer", ({ roomId, toSocketId, fromUserId, sdp }) => {
+      if (!roomId || !toSocketId || !sdp) return;
+      socket.to(toSocketId).emit("webrtc-answer", {
+        roomId,
+        fromSocketId: socket.id,
+        fromUserId,
+        sdp,
+      });
+    });
+
+    socket.on("webrtc-ice-candidate", ({ roomId, toSocketId, fromUserId, candidate }) => {
+      if (!roomId || !toSocketId || !candidate) return;
+      socket.to(toSocketId).emit("webrtc-ice-candidate", {
+        roomId,
+        fromSocketId: socket.id,
+        fromUserId,
+        candidate,
+      });
+    });
+
     socket.on("chat-message", ({ roomId, message, userName, userId, timestamp }) => {
       io.to(roomId).emit("chat-message", {
         id: Date.now().toString(),

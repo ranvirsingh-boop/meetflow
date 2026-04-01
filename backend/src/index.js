@@ -10,16 +10,26 @@ const socketHandler = require("./socket/socketHandler");
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigin = process.env.FRONTEND_URL || "http://localhost:3000";
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const corsOrigin = (origin, callback) => {
+  // allow non-browser clients or same-origin
+  if (!origin) return callback(null, true);
+  if (allowedOrigins.includes(origin)) return callback(null, true);
+  return callback(new Error(`CORS blocked origin: ${origin}`));
+};
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigin,
+    origin: corsOrigin,
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: allowedOrigin }));
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 app.use("/api/meetings", meetingRoutes);
