@@ -1,0 +1,233 @@
+.callScreen {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0d0d12;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.header {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: linear-gradient(to bottom, rgba(13,13,18,0.96), transparent);
+}
+.headerLeft { display: flex; align-items: center; gap: 10px; }
+.logoMini {
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+}
+.roomLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+.liveBadge {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(239,68,68,0.16);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: var(--accent-red);
+  font-size: 10px; font-weight: 800;
+  padding: 3px 9px; border-radius: 50px;
+  letter-spacing: 0.5px;
+}
+.liveDot {
+  width: 6px; height: 6px;
+  background: var(--accent-red);
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+.recBadge {
+  background: rgba(239,68,68,0.14);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: var(--accent-red);
+  font-size: 10px; font-weight: 700;
+  padding: 3px 9px; border-radius: 50px;
+}
+.headerRight { display: flex; align-items: center; gap: 12px; }
+.timer {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.leaveBtn {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  border-radius: 50px;
+  padding: 5px 14px;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.leaveBtn:hover {
+  background: rgba(239,68,68,0.18);
+  border-color: rgba(239,68,68,0.4);
+  color: var(--accent-red);
+}
+
+/* ── Grid ── */
+.grid {
+  flex: 1;
+  display: grid;
+  padding: 58px 12px 84px;
+  gap: 10px;
+  overflow: hidden;
+}
+.grid1 { grid-template-columns: 1fr; }
+.grid2 { grid-template-columns: 1fr 1fr; }
+.grid4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.grid6 { grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; }
+
+/* ── Tile ── */
+.tile {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.tileSpeaking { border-color: var(--accent-green) !important; }
+.tileYou      { border-color: rgba(0,113,227,0.35); }
+
+.youTag {
+  position: absolute; top: 9px; left: 9px; z-index: 3;
+  background: rgba(0,113,227,0.22);
+  border: 1px solid rgba(0,113,227,0.45);
+  color: #60a5fa;
+  font-size: 9px; font-weight: 700;
+  padding: 2px 7px; border-radius: 4px;
+}
+.tileBg {
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, #1a1a2e, #0f0f1a);
+  display: flex; align-items: center; justify-content: center;
+}
+.tileMesh {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(0,113,227,0.18) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(139,92,246,0.13) 0%, transparent 50%);
+  animation: meshPulse 4s ease-in-out infinite alternate;
+}
+.tileAvatar {
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 800;
+  position: relative; z-index: 2;
+  color: #fff;
+}
+.tileFooter {
+  position: absolute; bottom: 9px; left: 9px; right: 9px;
+  display: flex; align-items: center; justify-content: space-between;
+  z-index: 3;
+}
+.tileName {
+  background: rgba(0,0,0,0.58);
+  backdrop-filter: blur(8px);
+  padding: 3px 9px; border-radius: 5px;
+  font-size: 11px; font-weight: 600;
+}
+.tileBadges { display: flex; gap: 4px; }
+.badge {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.52);
+  backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+}
+.badgeMuted { background: rgba(239,68,68,0.26); }
+
+/* ── Captions ── */
+.captionsBox {
+  position: absolute;
+  bottom: 86px; left: 50%; transform: translateX(-50%);
+  z-index: 15; pointer-events: none;
+  width: 580px; max-width: 90%;
+  text-align: center;
+}
+.captionText {
+  display: inline-block;
+  background: rgba(0,0,0,0.8);
+  backdrop-filter: blur(10px);
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 15px; font-weight: 500;
+  animation: fadeIn 0.3s ease;
+}
+
+/* ── Reactions feed ── */
+.reactionsFeed {
+  position: absolute; bottom: 92px; left: 16px;
+  z-index: 15; pointer-events: none;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.feedItem {
+  background: rgba(0,0,0,0.52);
+  backdrop-filter: blur(10px);
+  padding: 5px 11px; border-radius: 20px;
+  font-size: 13px;
+  display: flex; align-items: center; gap: 6px;
+  animation: fadeIn 0.25s ease;
+}
+.feedItem span { font-size: 11px; color: var(--text-secondary); }
+
+/* ── Controls ── */
+.controls {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px 18px;
+  background: linear-gradient(to top, rgba(13,13,18,0.98), transparent);
+}
+.ctrlBtn {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 4px;
+  background: none; border: none;
+  cursor: pointer; transition: transform 0.15s;
+}
+.ctrlBtn:hover { transform: translateY(-2px); }
+.ctrlIcon {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; transition: all 0.2s;
+}
+.ctrlBtn:hover .ctrlIcon { background: var(--bg-hover); }
+.ctrlIconActive {
+  background: rgba(239,68,68,0.18) !important;
+  border-color: rgba(239,68,68,0.38) !important;
+}
+.ctrlLabel { font-size: 10px; color: var(--text-secondary); font-weight: 500; }
+
+.endBtn {
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  background: var(--accent-red);
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  cursor: pointer; transition: all 0.2s;
+  margin: 0 4px;
+}
+.endBtn:hover { background: #dc2626; transform: scale(1.06); }
