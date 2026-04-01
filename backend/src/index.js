@@ -10,26 +10,15 @@ const socketHandler = require("./socket/socketHandler");
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-const corsOrigin = (origin, callback) => {
-  // allow non-browser clients or same-origin
-  if (!origin) return callback(null, true);
-  if (allowedOrigins.includes(origin)) return callback(null, true);
-  return callback(new Error(`CORS blocked origin: ${origin}`));
-};
-
+// Allow ALL origins — fixes Vercel <-> Render connection
 const io = new Server(server, {
   cors: {
-    origin: corsOrigin,
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: corsOrigin }));
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 app.use("/api/meetings", meetingRoutes);
