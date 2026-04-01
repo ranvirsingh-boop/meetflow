@@ -19,6 +19,15 @@ const CAPTIONS = [
   "I think we should wrap up soon",
 ];
 
+const BG_COLORS = [
+  '#1a1a1a',
+  '#2a2a2a',
+  '#3a3a3a',
+  '#4a4a4a',
+  '#5a5a5a',
+  '#6a6a6a',
+];
+
 export default function Call() {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -41,6 +50,7 @@ export default function Call() {
   const [speakingId, setSpeakingId] = useState(null);
   const [localPreviewStream, setLocalPreviewStream] = useState(null);
   const [remoteStreamsByUserId, setRemoteStreamsByUserId] = useState({});
+  const [bgColor, setBgColor] = useState('#1a1a1a');
 
   const socketRef = useRef(null);
   const captionIntervalRef = useRef(null);
@@ -76,6 +86,18 @@ export default function Call() {
   useEffect(() => {
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // Background color change
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBgColor((prev) => {
+        const currentIndex = BG_COLORS.indexOf(prev);
+        const nextIndex = (currentIndex + 1) % BG_COLORS.length;
+        return BG_COLORS[nextIndex];
+      });
+    }, 3500);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -520,7 +542,7 @@ export default function Call() {
     : styles.grid6;
 
   return (
-    <div className={styles.callScreen}>
+    <div className={styles.callScreen} style={{ backgroundColor: bgColor, transition: 'background-color 1s ease' }}>
       {/* Header */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
