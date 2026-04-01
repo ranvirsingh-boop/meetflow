@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useMeeting } from '../context/MeetingContext';
@@ -9,6 +9,15 @@ import styles from './Home.module.css';
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
+const HOME_BG_COLORS = [
+  '#ff6b6b', // Red
+  '#4ecdc4', // Teal
+  '#45b7d1', // Blue
+  '#96ceb4', // Green
+  '#ffeaa7', // Yellow
+  '#dda0dd', // Plum
+];
+
 export default function Home() {
   const navigate = useNavigate();
   const { userName, setUserName, scheduledMeetings, removeScheduledMeeting } = useMeeting();
@@ -17,11 +26,24 @@ export default function Home() {
   const [toast, setToast] = useState(null);
   const [nameInput, setNameInput] = useState('');
   const [showNamePrompt, setShowNamePrompt] = useState(!userName);
+  const [bgColor, setBgColor] = useState(HOME_BG_COLORS[0]);
 
   const showToast = (msg, icon = '✅') => {
     setToast({ msg, icon });
     setTimeout(() => setToast(null), 3000);
   };
+
+  // Background color change
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBgColor((prev) => {
+        const currentIndex = HOME_BG_COLORS.indexOf(prev);
+        const nextIndex = (currentIndex + 1) % HOME_BG_COLORS.length;
+        return HOME_BG_COLORS[nextIndex];
+      });
+    }, 3500);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleNewMeeting = async () => {
     if (!userName) { setShowNamePrompt(true); return; }
@@ -54,7 +76,7 @@ export default function Home() {
 
   if (showNamePrompt) {
     return (
-      <div className={styles.nameScreen}>
+      <div className={styles.nameScreen} style={{ backgroundColor: bgColor, transition: 'background-color 1s ease' }}>
         <div className={styles.nameBg} />
         <div className={styles.nameCard}>
           <div className={styles.nameLogoRow}>
@@ -80,7 +102,7 @@ export default function Home() {
   }
 
   return (
-    <div className={styles.home}>
+    <div className={styles.home} style={{ backgroundColor: bgColor, transition: 'background-color 1s ease' }}>
       <div className={styles.homeBg}>
         <div className={styles.blob1} />
         <div className={styles.blob2} />
