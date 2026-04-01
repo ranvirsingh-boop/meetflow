@@ -135,6 +135,7 @@ export default function Call() {
       pc.ontrack = (e) => {
         const [remoteStream] = e.streams;
         if (!remoteStream) return;
+        console.log('Received remote stream from', toUserId);
         setRemoteStreamsByUserId((prev) => ({ ...prev, [toUserId]: remoteStream }));
       };
 
@@ -217,17 +218,26 @@ export default function Call() {
     const socket = io(BACKEND, {
       transports: ['websocket', 'polling'],
       withCredentials: false,
-});
+    });
     socketRef.current = socket;
     const myUserId = userIdRef.current;
     const myName = displayName;
 
-    socket.emit('join-room', { roomId, userName: myName, userId: myUserId });
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.id);
+      socket.emit('join-room', { roomId, userName: myName, userId: myUserId });
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+    });
 
     socket.on('room-state', ({ participants: existing }) => {
+      console.log('Room state:', existing);
       setParticipants(existing.map((p) => ({ ...p, isRemote: true })));
     });
     socket.on('user-joined', ({ participant }) => {
+      console.log('User joined:', participant);
       setParticipants((prev) => {
         if (prev.find((p) => p.userId === participant.userId)) return prev;
         return [...prev, { ...participant, isRemote: true }];
@@ -274,6 +284,7 @@ export default function Call() {
 
     // WebRTC signaling handlers
     socket.on('webrtc-offer', async ({ fromSocketId, fromUserId, sdp }) => {
+      console.log('Received offer from', fromUserId);
       try {
         const pc = ensurePeerConnection({ toSocketId: fromSocketId, toUserId: fromUserId });
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -285,8 +296,9 @@ export default function Call() {
           fromUserId: userIdRef.current,
           sdp: pc.localDescription,
         });
+        console.log('Sent answer to', fromUserId);
       } catch (e) {
-        console.error(e);
+        console.error('Error handling offer:', e);
       }
     });
 
